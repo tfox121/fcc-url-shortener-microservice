@@ -33,15 +33,15 @@ var ShortUrl = mongoose.model('ShortUrl', UrlSchema);
 
 function handleAsync(err, data) {
   if (err) throw err;
-  console.log(data)
+  console.log("Callback has", data)
 }
 
-var createAndSaveShortUrl = function (longUrl, done) {
+var createAndSaveShortUrl = function (longUrl, done, res) {
   ShortUrl.findOne({url: longUrl}, function(err, data) {
     if(err) done(err)
     if(data) {
       console.log(`${longUrl} has already been entered`)
-      done(null, data.id)
+      done(null, data.id, longUrl, res)
     } else {
       ShortUrl.countDocuments({}, function (err, count) {
         if(err) done(err)
@@ -54,7 +54,7 @@ var createAndSaveShortUrl = function (longUrl, done) {
           if (err) {
             done(err)
           } else {
-            done(null, data.id)
+            done(null, data.id, longUrl, res)
           }
         })
       });
@@ -62,19 +62,16 @@ var createAndSaveShortUrl = function (longUrl, done) {
   })
 }
 
-var findShortUrl = function (longUrl, done) {
-  var short = 0
-  ShortUrl.findOne({url: longUrl}, function(err, data) {
+var findLongUrl = function (shortUrl, done, res) {
+  ShortUrl.findOne({id: shortUrl}, function(err, data) {
     if (err) {
       console.log("ERROR")
       done(err)
     } else {
-      short = data.id
-      console.log("PASS", short)
-      done(null, short)
+      console.log("PASS", data.url)
+      done(null, data.url, res)
     }
   })
-  return short
 }
 
 
@@ -98,15 +95,7 @@ app.use(parserMware)
 
 var REPLACE_REGEX = /^https?:\/\//i
 
-app .route('/api/shorturl/new')
-    .post(function(req, res) {
-  var url = req.body.url
-  var dehttp = url.replace(REPLACE_REGEX, '')
-  dns.lookup(dehttp, async function (err, addresses, family) {
-    if (err) {
-      res.json({ "error": "invalid URL" })
-    } else {
-    function jsonAsync (err, data) {
+function jsonAsync(err, data, url, res) {
       if (err) {
         throw err
       } else {
@@ -114,19 +103,32 @@ app .route('/api/shorturl/new')
         res.json({ original_url: url, short_url: data })
       }
     }
-    createAndSaveShortUrl(url, jsonAsync)
- 
+
+app.post('/api/shorturl/new', function(req, res) {
+  var url = req.body.url
+  var dehttp = url.replace(REPLACE_REGEX, '')
+  dns.lookup(dehttp, async function (err, addresses, family) {
+    if (err) {
+      res.json({ "error": "invalid URL" })
+    } else {
+      createAndSaveShortUrl(url, jsonAsync, res)
     }
   });
-  
-  
-
-  
-
-  
-  
-  
 })
+
+function redirectAsync(err, data, res) {
+  if (err) {
+    throw err
+  } else {
+    console.log("Long URL:", data)
+    res.redirect(data)
+  }
+}
+
+app.get("/api/shorturl/new/:short_url", function (req, res) {
+  var shortUrl = req.params.short_url
+  findLongUrl(shortUrl, redirectAsync, res)
+});
 
 
 app.use('/public', express.static(process.cwd() + '/public'));
